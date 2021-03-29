@@ -1,0 +1,115 @@
+#!/usr/bin/env python
+#
+#Copyright 2019 Elmwood Electronics
+#Permission is hereby granted, free of charge, to any person obtaining a copy of this crappy software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+#The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+#THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+import sqlite3
+import json
+from functools import lru_cache
+from datetime import datetime,time
+from time import mktime
+
+now = datetime.now()
+hour_now = now.strftime('%H')
+time_now = datetime.today()
+
+sec_since_epoch = int(mktime(now.timetuple()) + now.microsecond/1000000.0)  #using this to have a "unique" counter for each entry, should make the database easier to search
+
+counter_int = sec_since_epoch - 1576179322  #1576179322 was the epoch when we made this program, just put this line in to make a lower number for our counter
+
+print (counter_int)
+
+conn = sqlite3.connect('/home/pi/aircraft.db') 
+cur = conn.cursor()
+
+#creating the database tables here:
+
+cur.execute('''
+CREATE TABLE IF NOT EXISTS all_aircraft (
+    counter INTEGER PRIMARY KEY UNIQUE,  
+    hex     TEXT,
+    altitude  INTEGER,
+    flight TEXT, 
+    squawk INTEGER,
+    speed INTEGER,
+    lat FLOAT,
+    long FLOAT,
+    last_seen TEXT,
+    times_seen INTEGER
+)
+''')
+
+cur.execute('''
+CREATE TABLE IF NOT EXISTS interesting (
+    hex     TEXT ,
+    altitude  INTEGER,
+    flight TEXT, 
+    squawk INTEGER,
+    speed INTEGER,
+    lat FLOAT,
+    long FLOAT,
+    emergency TEXT
+)
+''')
+
+aircraft_json = json.load(open('/run/dump1090-fa/aircraft.json'))   #load the JSON file from the default location
+
+    try:
+        with open(aircraft_json, 'r') as json_data:
+            json_data = json.load(json_data)
+            for planes in json_data["aircraft"]:
+				try:
+					hex = planes["hex"]   #sometimes the data comes back empty, so if it fails, we will insert "none"
+				except:
+					hex = None
+				try:
+					altitude = planes["alt_baro"]
+				except:
+					altitude = None
+				try: 
+					flight = planes["flight"]
+				except:
+					flight = None
+				try:
+					squawk = planes["squawk"]
+				except:
+					squawk = None
+				try:
+					speed = planes["speed"]
+				except:
+					speed = None   #we used to get just a "speed" result, but it looks like that changed.  Keeping this here just in case
+					try:
+						speed = planes["mach"] * 767  # convert mach to mph
+					except:
+						speed = None
+				try: 
+					emergency = planes["emergency"]
+					if emergency == "none":
+						emergency = None
+				except:
+					emergency = None
+				try:
+					lat = planes["lat"]
+					long = planes["lon"]
+				except:
+					lat = None
+					long = None
+			
+				
+				cur.execute('''SELECT COUNT (hex) FROM all_aircraft WHERE hex = ? AND (last_seen is null OR last_seen < date('now','-1 hour'))''', (hex,))
+				counter = cur.fetchone()
+				cur.execute('''SELECT last_seen FROM all_aircraft WHERE hex = ?''', (hex,))
+				this_last_seen = cur.fetchone()
+				if this_last_seen is None:
+					cur.execute('''INSERT INTO all_aircraft (counter, hex, altitude, flight, squawk, speed, lat, long, last_seen, times_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', (counter_int, hex, altitude, flight, squawk, speed, lat, long, time_now, int(counter[0])))
+					conn.commit()    
+				else:
+					hour_last_seen = this_last_seen[0][11:13]
+					cur.execute('''INSERT INTO all_aircraft (counter, hex, altitude, flight, squawk, speed, lat, long, last_seen, times_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', (counter_int, hex, altitude, flight, squawk, speed, lat, long, time_now, int(counter[0])))
+					conn.commit()    
+				counter_int = counter_int + 1  #increment the counter by 1.  Note, if you get 100's of aircraft, you will want to run the script no more than every 5 minutes
+				print (counter_int)
+    except FileNotFoundError:
+        logging.error("my_file not found.")        
