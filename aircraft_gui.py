@@ -30,7 +30,6 @@ while True:
     # at the center coordinate.
     display_surface.blit(tail_number_header, tail_number_header_rect)
     for event in pygame.event.get():
-        if event.type == QUIT:
-            pygame.quit()
+        if event.type == pygame.QUIT():
             sys.exit()
     pygame.display.update()
