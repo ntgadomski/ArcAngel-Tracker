@@ -1,5 +1,6 @@
 import pygame, sys
 from pygame.locals import *
+import aircraft_DF as my_calc
 
 pygame.init()
 
@@ -7,9 +8,10 @@ DISPLAYSURF = pygame.display.set_mode((500,500))
 pygame.display.set_caption('Plane Radar')
 display_surface = pygame.display.set_mode((500, 500))
 
+my_calc.aircraft_dist_calc()
 tail_number = ''
-distance = ''
-altitudae = ''
+distance = my_calc.get_distance
+altitude = my_calc.get_altitude
 
 WHITE = (255,255,255)
 GREEN = (0,255,0)
